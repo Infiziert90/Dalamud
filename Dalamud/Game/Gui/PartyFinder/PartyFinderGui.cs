@@ -6,6 +6,7 @@ using Dalamud.Hooking;
 using Dalamud.IoC;
 using Dalamud.IoC.Internal;
 using Dalamud.Plugin.Services;
+
 using Serilog;
 
 namespace Dalamud.Game.Gui.PartyFinder;
@@ -13,8 +14,7 @@ namespace Dalamud.Game.Gui.PartyFinder;
 /// <summary>
 /// This class handles interacting with the native PartyFinder window.
 /// </summary>
-[InterfaceVersion("1.0")]
-[ServiceManager.BlockingEarlyLoadedService]
+[ServiceManager.EarlyLoadedService]
 internal sealed class PartyFinderGui : IInternalDisposableService, IPartyFinderGui
 {
     private readonly PartyFinderAddressResolver address;
@@ -126,7 +126,6 @@ internal sealed class PartyFinderGui : IInternalDisposableService, IPartyFinderG
 /// A scoped variant of the PartyFinderGui service.
 /// </summary>
 [PluginInterface]
-[InterfaceVersion("1.0")]
 [ServiceManager.ScopedService]
 #pragma warning disable SA1015
 [ResolveVia<IPartyFinderGui>]
@@ -155,5 +154,5 @@ internal class PartyFinderGuiPluginScoped : IInternalDisposableService, IPartyFi
         this.ReceiveListing = null;
     }
 
-    private void ReceiveListingForward(PartyFinderListing listing, PartyFinderListingEventArgs args) => this.ReceiveListing?.Invoke(listing, args);
+    private void ReceiveListingForward(IPartyFinderListing listing, IPartyFinderListingEventArgs args) => this.ReceiveListing?.Invoke(listing, args);
 }

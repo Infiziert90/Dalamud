@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Dalamud.Game.Network.Internal.MarketBoardUploaders.Universalis.Types;
 using Dalamud.Game.Network.Structures;
 using Dalamud.Networking.Http;
+
 using Newtonsoft.Json;
 using Serilog;
 
@@ -53,6 +54,7 @@ internal class UniversalisMarketBoardUploader : IMarketBoardUploader
 
         foreach (var marketBoardItemListing in request.Listings)
         {
+#pragma warning disable CS0618 // Type or member is obsolete
             var universalisListing = new UniversalisItemListingsEntry
             {
                 ListingId = marketBoardItemListing.ListingId.ToString(),
@@ -69,6 +71,7 @@ internal class UniversalisMarketBoardUploader : IMarketBoardUploader
                 RetainerCity = marketBoardItemListing.RetainerCityId,
                 Materia = new List<UniversalisItemMateria>(),
             };
+#pragma warning restore CS0618 // Type or member is obsolete
 
             foreach (var itemMateria in marketBoardItemListing.Materia)
             {

@@ -17,7 +17,6 @@ using FFXIVClientStructs.FFXIV.Client.System.Memory;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
-using FFXIVClientStructs.Interop;
 
 using ValueType = FFXIVClientStructs.FFXIV.Component.GUI.ValueType;
 
@@ -26,7 +25,6 @@ namespace Dalamud.Game.Gui.ContextMenu;
 /// <summary>
 /// This class handles interacting with the game's (right-click) context menu.
 /// </summary>
-[InterfaceVersion("1.0")]
 [ServiceManager.EarlyLoadedService]
 internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextMenu
 {
@@ -40,23 +38,23 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
     private ContextMenu()
     {
         this.raptureAtkModuleOpenAddonByAgentHook = Hook<RaptureAtkModuleOpenAddonByAgentDelegate>.FromAddress((nint)RaptureAtkModule.Addresses.OpenAddonByAgent.Value, this.RaptureAtkModuleOpenAddonByAgentDetour);
-        this.addonContextMenuOnMenuSelectedHook = Hook<AddonContextMenuOnMenuSelectedDelegate>.FromAddress((nint)AddonContextMenu.StaticVTable.OnMenuSelected, this.AddonContextMenuOnMenuSelectedDetour);
+        this.addonContextMenuOnMenuSelectedHook = Hook<AddonContextMenuOnMenuSelectedDelegate>.FromAddress((nint)AddonContextMenu.StaticVirtualTablePointer->OnMenuSelected, this.AddonContextMenuOnMenuSelectedDetour);
         this.raptureAtkModuleOpenAddon = Marshal.GetDelegateForFunctionPointer<RaptureAtkModuleOpenAddonDelegate>((nint)RaptureAtkModule.Addresses.OpenAddon.Value);
 
         this.raptureAtkModuleOpenAddonByAgentHook.Enable();
         this.addonContextMenuOnMenuSelectedHook.Enable();
     }
 
-    private unsafe delegate ushort RaptureAtkModuleOpenAddonByAgentDelegate(RaptureAtkModule* module, byte* addonName, AtkUnitBase* addon, int valueCount, AtkValue* values, AgentInterface* agent, nint a7, ushort parentAddonId);
+    private delegate ushort RaptureAtkModuleOpenAddonByAgentDelegate(RaptureAtkModule* module, byte* addonName, AtkUnitBase* addon, int valueCount, AtkValue* values, AgentInterface* agent, nint a7, ushort parentAddonId);
     
-    private unsafe delegate bool AddonContextMenuOnMenuSelectedDelegate(AddonContextMenu* addon, int selectedIdx, byte a3);
+    private delegate bool AddonContextMenuOnMenuSelectedDelegate(AddonContextMenu* addon, int selectedIdx, byte a3);
     
-    private unsafe delegate ushort RaptureAtkModuleOpenAddonDelegate(RaptureAtkModule* a1, uint addonNameId, uint valueCount, AtkValue* values, AgentInterface* parentAgent, ulong unk, ushort parentAddonId, int unk2);
+    private delegate ushort RaptureAtkModuleOpenAddonDelegate(RaptureAtkModule* a1, uint addonNameId, uint valueCount, AtkValue* values, AgentInterface* parentAgent, ulong unk, ushort parentAddonId, int unk2);
 
     /// <inheritdoc/>
-    public event IContextMenu.OnMenuOpenedDelegate OnMenuOpened;
+    public event IContextMenu.OnMenuOpenedDelegate? OnMenuOpened;
 
-    private Dictionary<ContextMenuType, List<MenuItem>> MenuItems { get; } = new();
+    private Dictionary<ContextMenuType, List<IMenuItem>> MenuItems { get; } = new();
 
     private object MenuItemsLock { get; } = new();
 
@@ -64,7 +62,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
 
     private ContextMenuType? SelectedMenuType { get; set; }
 
-    private List<MenuItem>? SelectedItems { get; set; }
+    private List<IMenuItem>? SelectedItems { get; set; }
 
     private HashSet<nint> SelectedEventInterfaces { get; } = new();
 
@@ -74,7 +72,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
     // 0 -> inf: selected items
     private List<int> MenuCallbackIds { get; } = new();
 
-    private IReadOnlyList<MenuItem>? SubmenuItems { get; set; }
+    private IReadOnlyList<IMenuItem>? SubmenuItems { get; set; }
 
     /// <inheritdoc/>
     void IInternalDisposableService.DisposeService()
@@ -92,7 +90,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
     }
 
     /// <inheritdoc/>
-    public void AddMenuItem(ContextMenuType menuType, MenuItem item)
+    public void AddMenuItem(ContextMenuType menuType, IMenuItem item)
     {
         lock (this.MenuItemsLock)
         {
@@ -103,7 +101,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
     }
 
     /// <inheritdoc/>
-    public bool RemoveMenuItem(ContextMenuType menuType, MenuItem item)
+    public bool RemoveMenuItem(ContextMenuType menuType, IMenuItem item)
     {
         lock (this.MenuItemsLock)
         {
@@ -112,6 +110,19 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
             return items.Remove(item);
         }
     }
+
+    /// <summary>
+    /// Gets the name with the given prefix.
+    /// </summary>
+    /// <param name="menuItem">The menu item to prefix.</param>
+    /// <returns>The prefixed name.</returns>
+    internal SeString GetPrefixedName(IMenuItem menuItem) =>
+        menuItem.Prefix is { } prefix
+            ? new SeStringBuilder()
+              .AddUiForeground($"{prefix.ToIconString()} ", menuItem.PrefixColor)
+              .Append(menuItem.Name)
+              .Build()
+            : menuItem.Name;
 
     private AtkValue* ExpandContextMenuArray(Span<AtkValue> oldValues, int newSize)
     {
@@ -153,7 +164,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         values[0].ChangeType(ValueType.UInt);
         values[0].UInt = 0;
         values[1].ChangeType(ValueType.String);
-        values[1].SetString(name.Encode().NullTerminate());
+        values[1].SetManagedString(name.Encode().NullTerminate());
         values[2].ChangeType(ValueType.Int);
         values[2].Int = x;
         values[3].ChangeType(ValueType.Int);
@@ -169,9 +180,9 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         return values;
     }
 
-    private void SetupGenericMenu(int headerCount, int sizeHeaderIdx, int returnHeaderIdx, int submenuHeaderIdx, IReadOnlyList<MenuItem> items, ref int valueCount, ref AtkValue* values)
+    private void SetupGenericMenu(int headerCount, int sizeHeaderIdx, int returnHeaderIdx, int submenuHeaderIdx, IReadOnlyList<IMenuItem> items, ref int valueCount, ref AtkValue* values)
     {
-        var itemsWithIdx = items.Select((item, idx) => (item, idx)).OrderBy(i => i.item.Priority);
+        var itemsWithIdx = items.Select((item, idx) => (item, idx)).OrderBy(i => i.item.Priority).ToArray();
         var prefixItems = itemsWithIdx.Where(i => i.item.Priority < 0).ToArray();
         var suffixItems = itemsWithIdx.Where(i => i.item.Priority >= 0).ToArray();
 
@@ -217,7 +228,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         returnMask <<= prefixMenuSize;
         submenuMask <<= prefixMenuSize;
 
-        void FillData(Span<AtkValue> disabledData, Span<AtkValue> nameData, int i, MenuItem item, int idx)
+        void FillData(Span<AtkValue> disabledData, Span<AtkValue> nameData, int i, IMenuItem item, int idx)
         {
             this.MenuCallbackIds.Add(idx);
 
@@ -233,7 +244,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
                 submenuMask |= 1u << i;
 
             nameData[i].ChangeType(ValueType.String);
-            nameData[i].SetString(item.PrefixedName.Encode().NullTerminate());
+            nameData[i].SetManagedString(this.GetPrefixedName(item).Encode().NullTerminate());
         }
 
         for (var i = 0; i < prefixMenuSize; ++i)
@@ -256,7 +267,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         offsetData[sizeHeaderIdx].UInt += (uint)items.Count;
     }
 
-    private void SetupContextMenu(IReadOnlyList<MenuItem> items, ref int valueCount, ref AtkValue* values)
+    private void SetupContextMenu(IReadOnlyList<IMenuItem> items, ref int valueCount, ref AtkValue* values)
     {
         // 0: UInt = Item Count
         // 1: UInt = 0 (probably window name, just unused)
@@ -270,16 +281,20 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         {
             if (!item.Prefix.HasValue)
             {
-                item.PrefixChar = 'D';
-                item.PrefixColor = 539;
-                Log.Warning($"Menu item \"{item.Name}\" has no prefix, defaulting to Dalamud's. Menu items outside of a submenu must have a prefix.");
+                item.Prefix = IMenuItem.DalamudDefaultPrefix;
+                item.PrefixColor = IMenuItem.DalamudDefaultPrefixColor;
+
+                if (!item.UseDefaultPrefix)
+                {
+                    Log.Warning($"Menu item \"{item.Name}\" has no prefix, defaulting to Dalamud's. Menu items outside of a submenu must have a prefix.");
+                }
             }
         }
 
         this.SetupGenericMenu(7, 0, 2, 3, items, ref valueCount, ref values);
     }
 
-    private void SetupContextSubMenu(IReadOnlyList<MenuItem> items, ref int valueCount, ref AtkValue* values)
+    private void SetupContextSubMenu(IReadOnlyList<IMenuItem> items, ref int valueCount, ref AtkValue* values)
     {
         // 0: UInt = ContextItemCount
         // 1: skipped?
@@ -312,8 +327,8 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
                 this.SelectedMenuType = ContextMenuType.Default;
 
                 var menu = AgentContext.Instance()->CurrentContextMenu;
-                var handlers = new Span<Pointer<AtkEventInterface>>(menu->EventHandlerArray, 32);
-                var ids = new Span<byte>(menu->EventIdArray, 32);
+                var handlers = menu->EventHandlers;
+                var ids = menu->EventIds;
                 var count = (int)values[0].UInt;
                 handlers = handlers.Slice(7, count);
                 ids = ids.Slice(7, count);
@@ -374,17 +389,17 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         return ret;
     }
 
-    private List<MenuItem> FixupMenuList(List<MenuItem> items, int nativeMenuSize)
+    private List<IMenuItem> FixupMenuList(List<IMenuItem> items, int nativeMenuSize)
     {
         // The in game menu actually supports 32 items, but the last item can't have a visible submenu arrow.
         // As such, we'll only work with 31 items.
-        const int MaxMenuItems = 31;
-        if (items.Count + nativeMenuSize > MaxMenuItems)
+        const int maxMenuItems = 31;
+        if (items.Count + nativeMenuSize > maxMenuItems)
         {
-            Log.Warning($"Menu size exceeds {MaxMenuItems} items, truncating.");
+            Log.Warning($"Menu size exceeds {maxMenuItems} items, truncating.");
             var orderedItems = items.OrderBy(i => i.Priority).ToArray();
-            var newItems = orderedItems[..(MaxMenuItems - nativeMenuSize - 1)];
-            var submenuItems = orderedItems[(MaxMenuItems - nativeMenuSize - 1)..];
+            var newItems = orderedItems[..(maxMenuItems - nativeMenuSize - 1)];
+            var submenuItems = orderedItems[(maxMenuItems - nativeMenuSize - 1)..];
             return newItems.Append(new MenuItem
             {
                 Prefix = SeIconChar.BoxedLetterD,
@@ -399,7 +414,7 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         return items;
     }
 
-    private void OpenSubmenu(SeString name, IReadOnlyList<MenuItem> submenuItems, int posX, int posY)
+    private void OpenSubmenu(SeString name, IReadOnlyList<IMenuItem> submenuItems, int posX, int posY)
     {
         if (submenuItems.Count == 0)
             throw new ArgumentException("Submenu must not be empty", nameof(submenuItems));
@@ -450,7 +465,6 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
         if (callbackId < 0)
         {
             selectedIdx = -callbackId - 1;
-            goto original;
         }
         else
         {
@@ -461,17 +475,17 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
             {
                 if (item.OnClicked == null)
                     throw new InvalidOperationException("Item has no OnClicked handler");
-                item.OnClicked.InvokeSafely(new(
-                    (name, items) =>
+                item.OnClicked.InvokeSafely(new MenuItemClickedArgs(
+                    (name, submenuItems) =>
                     {
                         short x, y;
                         addon->AtkUnitBase.GetPosition(&x, &y);
-                        this.OpenSubmenu(name ?? item.Name, items, x, y);
+                        this.OpenSubmenu(name ?? item.Name, submenuItems, x, y);
                         openedSubmenu = true;
                     },
                     this.SelectedParentAddon,
                     this.SelectedAgent,
-                    this.SelectedMenuType.Value,
+                    this.SelectedMenuType ?? default,
                     this.SelectedEventInterfaces));
             }
             catch (Exception e)
@@ -479,14 +493,14 @@ internal sealed unsafe class ContextMenu : IInternalDisposableService, IContextM
                 Log.Error(e, "Error while handling context menu click");
             }
 
-            // Close with clicky sound
+            // Close with click sound
             if (!openedSubmenu)
                 addon->AtkUnitBase.FireCallbackInt(-2);
             return false;
         }
 
 original:
-        // Eventually handled by inventorycontext here: 14022BBD0 (6.51)
+        // Eventually handled by inventory context here: 14022BBD0 (6.51)
         return this.addonContextMenuOnMenuSelectedHook.Original(addon, selectedIdx, a3);
     }
 }
@@ -495,7 +509,6 @@ original:
 /// Plugin-scoped version of a <see cref="ContextMenu"/> service.
 /// </summary>
 [PluginInterface]
-[InterfaceVersion("1.0")]
 [ServiceManager.ScopedService]
 #pragma warning disable SA1015
 [ResolveVia<IContextMenu>]
@@ -511,9 +524,9 @@ internal class ContextMenuPluginScoped : IInternalDisposableService, IContextMen
     }
 
     /// <inheritdoc/>
-    public event IContextMenu.OnMenuOpenedDelegate OnMenuOpened;
+    public event IContextMenu.OnMenuOpenedDelegate? OnMenuOpened;
 
-    private Dictionary<ContextMenuType, List<MenuItem>> MenuItems { get; } = new();
+    private Dictionary<ContextMenuType, List<IMenuItem>> MenuItems { get; } = new();
 
     private object MenuItemsLock { get; } = new();
 
@@ -535,7 +548,7 @@ internal class ContextMenuPluginScoped : IInternalDisposableService, IContextMen
     }
 
     /// <inheritdoc/>
-    public void AddMenuItem(ContextMenuType menuType, MenuItem item)
+    public void AddMenuItem(ContextMenuType menuType, IMenuItem item)
     {
         lock (this.MenuItemsLock)
         {
@@ -548,7 +561,7 @@ internal class ContextMenuPluginScoped : IInternalDisposableService, IContextMen
     }
 
     /// <inheritdoc/>
-    public bool RemoveMenuItem(ContextMenuType menuType, MenuItem item)
+    public bool RemoveMenuItem(ContextMenuType menuType, IMenuItem item)
     {
         lock (this.MenuItemsLock)
         {
@@ -559,6 +572,6 @@ internal class ContextMenuPluginScoped : IInternalDisposableService, IContextMen
         return this.parentService.RemoveMenuItem(menuType, item);
     }
 
-    private void OnMenuOpenedForward(MenuOpenedArgs args) =>
+    private void OnMenuOpenedForward(IMenuOpenedArgs args) =>
         this.OnMenuOpened?.Invoke(args);
 }
