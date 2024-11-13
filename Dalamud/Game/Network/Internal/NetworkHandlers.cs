@@ -367,10 +367,11 @@ internal unsafe class NetworkHandlers : IInternalDisposableService
                        }));
     }
 
-    private IObservable<List<MarketBoardHistory.MarketBoardHistoryListing>> OnMarketBoardSalesBatch(
+    private IObservable<(uint CatalogId, List<MarketBoardHistory.MarketBoardHistoryListing> Sales)> OnMarketBoardSalesBatch(
         IObservable<MarketBoardItemRequest> start)
     {
         var historyObservable = this.MbHistoryObservable.Publish().RefCount();
+        var catalogId = historyObservable.Where(history => history.CatalogId != 0).Take(1).FirstAsync().Wait().CatalogId;
 
         void LogHistoryObserved(MarketBoardHistory history)
         {
@@ -400,7 +401,8 @@ internal unsafe class NetworkHandlers : IInternalDisposableService
                        {
                            agg.AddRange(next.InternalHistoryListings);
                            return agg;
-                       }));
+                       }))
+               .Select(o => (catalogId, o));
     }
 
     private IDisposable HandleMarketBoardItemRequest()
@@ -432,10 +434,10 @@ internal unsafe class NetworkHandlers : IInternalDisposableService
 
     private void UploadMarketBoardData(
         MarketBoardItemRequest request,
-        ICollection<MarketBoardHistory.MarketBoardHistoryListing> sales,
+        (uint CatalogId, ICollection<MarketBoardHistory.MarketBoardHistoryListing> Sales) sales,
         ICollection<MarketBoardCurrentOfferings.MarketBoardItemListing> listings)
     {
-        var catalogId = listings.FirstOrDefault()?.CatalogId ?? 0;
+        var catalogId = sales.CatalogId;
         if (listings.Count != request.AmountToArrive)
         {
             Log.Error(
@@ -448,10 +450,11 @@ internal unsafe class NetworkHandlers : IInternalDisposableService
             "Market Board request resolved, starting upload: item#{CatalogId} listings#{ListingsObserved} sales#{SalesObserved}",
             catalogId,
             listings.Count,
-            sales.Count);
+            sales.Sales.Count);
 
+        request.CatalogId = catalogId;
         request.Listings.AddRange(listings);
-        request.History.AddRange(sales);
+        request.History.AddRange(sales.Sales);
 
         Task.Run(() => this.uploader.Upload(request))
             .ContinueWith(

@@ -48,7 +48,7 @@ internal class UniversalisMarketBoardUploader : IMarketBoardUploader
         {
             WorldId = clientState.LocalPlayer?.CurrentWorld.RowId ?? 0,
             UploaderId = uploader.ToString(),
-            ItemId = request.Listings.FirstOrDefault()?.CatalogId ?? 0,
+            ItemId = request.CatalogId,
             Listings = [],
             Sales = [],
         };
