@@ -77,7 +77,7 @@ internal partial class ChatHandlers : IServiceType
         }
 
         // For injections while logged in
-        if (clientState.LocalPlayer != null && clientState.TerritoryType == 0 && !this.hasSeenLoadingMsg)
+        if (clientState.IsLoggedIn && clientState.TerritoryType == 0 && !this.hasSeenLoadingMsg)
             this.PrintWelcomeMessage();
 
 #if !DEBUG && false
@@ -104,7 +104,7 @@ internal partial class ChatHandlers : IServiceType
 
         if (this.configuration.PrintDalamudWelcomeMsg)
         {
-            chatGui.Print(string.Format(Loc.Localize("DalamudWelcome", "Dalamud {0} loaded."), Util.GetScmVersion())
+            chatGui.Print(string.Format(Loc.Localize("DalamudWelcome", "Dalamud {0} loaded."), Versioning.GetScmVersion())
                           + string.Format(Loc.Localize("PluginsWelcome", " {0} plugin(s) loaded."), pluginManager.InstalledPlugins.Count(x => x.IsLoaded)));
         }
 
@@ -116,7 +116,7 @@ internal partial class ChatHandlers : IServiceType
             }
         }
 
-        if (string.IsNullOrEmpty(this.configuration.LastVersion) || !Util.AssemblyVersion.StartsWith(this.configuration.LastVersion))
+        if (string.IsNullOrEmpty(this.configuration.LastVersion) || !Versioning.GetAssemblyVersion().StartsWith(this.configuration.LastVersion))
         {
             var linkPayload = chatGui.AddChatLinkHandler(
                 (_, _) => dalamudInterface.OpenPluginInstallerTo(PluginInstallerOpenKind.Changelogs));
@@ -124,11 +124,11 @@ internal partial class ChatHandlers : IServiceType
             var updateMessage = new SeStringBuilder()
                 .AddText(Loc.Localize("DalamudUpdated", "Dalamud has been updated successfully!"))
                 .AddUiForeground(500)
-                .AddText("  [")
+                .AddText("  [ ")
                 .Add(linkPayload)
-                .AddText(Loc.Localize("DalamudClickToViewChangelogs", " Click here to view the changelog."))
+                .AddText(Loc.Localize("DalamudClickToViewChangelogs", "Click here to view the changelog."))
                 .Add(RawPayload.LinkTerminator)
-                .AddText("]")
+                .AddText(" ]")
                 .AddUiForegroundOff();
 
             chatGui.Print(new XivChatEntry
@@ -137,7 +137,7 @@ internal partial class ChatHandlers : IServiceType
                 Type = XivChatType.Notice,
             });
 
-            this.configuration.LastVersion = Util.AssemblyVersion;
+            this.configuration.LastVersion = Versioning.GetAssemblyVersion();
             this.configuration.QueueSave();
         }
 

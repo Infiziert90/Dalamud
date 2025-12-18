@@ -8,6 +8,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 
+using Dalamud.Plugin.Services;
+
 using Iced.Intel;
 using Newtonsoft.Json;
 using Serilog;
@@ -326,7 +328,7 @@ public class SigScanner : IDisposable, ISigScanner
     }
 
     /// <inheritdoc/>
-    public nint[] ScanAllText(string signature) => this.ScanAllText(signature, default).ToArray();
+    public nint[] ScanAllText(string signature) => this.ScanAllText(signature, CancellationToken.None).ToArray();
 
     /// <inheritdoc/>
     public IEnumerable<nint> ScanAllText(string signature, CancellationToken cancellationToken)
@@ -338,16 +340,16 @@ public class SigScanner : IDisposable, ISigScanner
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var index = IndexOf(mBase, this.TextSectionSize, needle, mask, badShift);
+            var index = IndexOf(mBase, this.TextSectionSize - (int)(mBase - this.TextSectionBase), needle, mask, badShift);
             if (index < 0)
                 break;
 
             var scanRet = mBase + index;
+            mBase = scanRet + 1;
             if (this.IsCopy)
                 scanRet -= this.moduleCopyOffset;
 
             yield return scanRet;
-            mBase = scanRet + 1;
         }
     }
 

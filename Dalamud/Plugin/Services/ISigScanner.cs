@@ -2,12 +2,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
-namespace Dalamud.Game;
+namespace Dalamud.Plugin.Services;
 
 /// <summary>
 /// A SigScanner facilitates searching for memory signatures in a given ProcessModule.
 /// </summary>
-public interface ISigScanner
+public interface ISigScanner : IDalamudService
 {
     /// <summary>
     /// Gets a value indicating whether the search on this module is performed on a copy.

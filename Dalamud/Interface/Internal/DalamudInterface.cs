@@ -33,6 +33,7 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using Dalamud.Logging.Internal;
 using Dalamud.Plugin.Internal;
+using Dalamud.Plugin.SelfTest.Internal;
 using Dalamud.Storage.Assets;
 using Dalamud.Utility;
 using FFXIVClientStructs.FFXIV.Client.System.Framework;
@@ -103,7 +104,8 @@ internal class DalamudInterface : IInternalDisposableService
         TitleScreenMenu titleScreenMenu,
         GameGui gameGui,
         ConsoleManager consoleManager,
-        AddonLifecycle addonLifecycle)
+        AddonLifecycle addonLifecycle,
+        SelfTestRegistry selfTestRegistry)
     {
         this.dalamud = dalamud;
         this.configuration = configuration;
@@ -119,7 +121,7 @@ internal class DalamudInterface : IInternalDisposableService
         this.pluginStatWindow = new PluginStatWindow() { IsOpen = false };
         this.pluginWindow = new PluginInstallerWindow(pluginImageCache, configuration) { IsOpen = false };
         this.settingsWindow = new SettingsWindow() { IsOpen = false };
-        this.selfTestWindow = new SelfTestWindow() { IsOpen = false };
+        this.selfTestWindow = new SelfTestWindow(selfTestRegistry) { IsOpen = false };
         this.styleEditorWindow = new StyleEditorWindow() { IsOpen = false };
         this.titleScreenMenuWindow = new TitleScreenMenuWindow(
             clientState,
@@ -180,7 +182,7 @@ internal class DalamudInterface : IInternalDisposableService
                     () => Service<DalamudInterface>.GetNullable()?.ToggleDevMenu(),
                     VirtualKey.SHIFT);
 
-                if (!configuration.DalamudBetaKind.IsNullOrEmpty())
+                if (Versioning.GetActiveTrack() != "release")
                 {
                     titleScreenMenu.AddEntryCore(
                         Loc.Localize("TSMDalamudDevMenu", "Developer Menu"),
@@ -531,6 +533,13 @@ internal class DalamudInterface : IInternalDisposableService
             this.creditsDarkeningAnimation.Restart();
     }
 
+    /// <inheritdoc cref="DataWindow.GetWidget{T}"/>
+    public T GetDataWindowWidget<T>() where T : IDataWindowWidget => this.dataWindow.GetWidget<T>();
+
+    /// <summary>Sets the data window current widget.</summary>
+    /// <param name="widget">Widget to set current.</param>
+    public void SetDataWindowWidget(IDataWindowWidget widget) => this.dataWindow.CurrentWidget = widget;
+
     private void OnDraw()
     {
         this.FrameCount++;
@@ -658,6 +667,10 @@ internal class DalamudInterface : IInternalDisposableService
     {
         if (this.isImGuiDrawDevMenu)
         {
+            using var barColor = ImRaii.PushColor(ImGuiCol.WindowBg, new Vector4(0.060f, 0.060f, 0.060f, 0.773f));
+            barColor.Push(ImGuiCol.MenuBarBg, Vector4.Zero);
+            barColor.Push(ImGuiCol.Border, Vector4.Zero);
+            barColor.Push(ImGuiCol.BorderShadow, Vector4.Zero);
             if (ImGui.BeginMainMenuBar())
             {
                 var pluginManager = Service<PluginManager>.Get();
@@ -830,6 +843,11 @@ internal class DalamudInterface : IInternalDisposableService
                             ImGui.PopStyleVar();
                         }
 
+                        if (ImGui.MenuItem("Raise external event through boot"))
+                        {
+                            ErrorHandling.CrashWithContext("Tést");
+                        }
+
                         ImGui.EndMenu();
                     }
 
@@ -847,7 +865,7 @@ internal class DalamudInterface : IInternalDisposableService
                     }
 
                     ImGui.MenuItem(this.dalamud.StartInfo.GameVersion?.ToString() ?? "Unknown version", false, false);
-                    ImGui.MenuItem($"D: {Util.GetScmVersion()} CS: {Util.GetGitHashClientStructs()}[{FFXIVClientStructs.ThisAssembly.Git.Commits}]", false, false);
+                    ImGui.MenuItem($"D: {Versioning.GetScmVersion()} CS: {Versioning.GetGitHashClientStructs()}[{FFXIVClientStructs.ThisAssembly.Git.Commits}]", false, false);
                     ImGui.MenuItem($"CLR: {Environment.Version}", false, false);
 
                     ImGui.EndMenu();
@@ -1058,7 +1076,8 @@ internal class DalamudInterface : IInternalDisposableService
                 {
                     ImGui.PushFont(InterfaceManager.MonoFont);
 
-                    ImGui.BeginMenu(Util.GetScmVersion(), false);
+                    ImGui.BeginMenu($"{Versioning.GetActiveTrack() ?? "???"} on {Versioning.GetGitBranch() ?? "???"}", false);
+                    ImGui.BeginMenu($"{Versioning.GetScmVersion()}", false);
                     ImGui.BeginMenu(this.FrameCount.ToString("000000"), false);
                     ImGui.BeginMenu(ImGui.GetIO().Framerate.ToString("000"), false);
                     ImGui.BeginMenu($"W:{Util.FormatBytes(GC.GetTotalMemory(false))}", false);

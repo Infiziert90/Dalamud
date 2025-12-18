@@ -18,17 +18,20 @@ using Dalamud.Game;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Interface.Colors;
+using Dalamud.Interface.Internal;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Support;
+
 using Lumina.Excel.Sheets;
+
 using Serilog;
+
 using TerraFX.Interop.Windows;
+
 using Windows.Win32.System.Memory;
 using Windows.Win32.System.Ole;
 using Windows.Win32.UI.WindowsAndMessaging;
-
-using Dalamud.Interface.Internal;
 
 using FLASHWINFO = Windows.Win32.UI.WindowsAndMessaging.FLASHWINFO;
 using HWND = Windows.Win32.Foundation.HWND;
@@ -65,75 +68,9 @@ public static partial class Util
     ];
 
     private static readonly Type GenericSpanType = typeof(Span<>);
-    private static string? scmVersionInternal;
-    private static string? gitHashInternal;
-    private static string? gitHashClientStructsInternal;
 
     private static ulong moduleStartAddr;
     private static ulong moduleEndAddr;
-
-    /// <summary>
-    /// Gets the Dalamud version.
-    /// </summary>
-    [Api13ToDo("Remove. Make both versions here internal. Add an API somewhere.")]
-    public static string AssemblyVersion { get; } =
-        Assembly.GetAssembly(typeof(ChatHandlers))!.GetName().Version!.ToString();
-
-    /// <summary>
-    /// Gets the Dalamud version.
-    /// </summary>
-    internal static Version AssemblyVersionParsed { get; } =
-        Assembly.GetAssembly(typeof(ChatHandlers))!.GetName().Version!;
-
-    /// <summary>
-    /// Gets the SCM Version from the assembly, or null if it cannot be found. This method will generally return
-    /// the <c>git describe</c> output for this build, which will be a raw version if this is a stable build or an
-    /// appropriately-annotated version if this is *not* stable. Local builds will return a `Local Build` text string.
-    /// </summary>
-    /// <returns>The SCM version of the assembly.</returns>
-    public static string GetScmVersion()
-    {
-        if (scmVersionInternal != null) return scmVersionInternal;
-
-        var asm = typeof(Util).Assembly;
-        var attrs = asm.GetCustomAttributes<AssemblyMetadataAttribute>();
-
-        return scmVersionInternal = attrs.First(a => a.Key == "SCMVersion").Value
-                                        ?? asm.GetName().Version!.ToString();
-    }
-
-    /// <summary>
-    /// Gets the git commit hash value from the assembly or null if it cannot be found. Will be null for Debug builds,
-    /// and will be suffixed with `-dirty` if in release with pending changes.
-    /// </summary>
-    /// <returns>The git hash of the assembly.</returns>
-    public static string? GetGitHash()
-    {
-        if (gitHashInternal != null)
-            return gitHashInternal;
-
-        var asm = typeof(Util).Assembly;
-        var attrs = asm.GetCustomAttributes<AssemblyMetadataAttribute>();
-
-        return gitHashInternal = attrs.FirstOrDefault(a => a.Key == "GitHash")?.Value ?? "N/A";
-    }
-
-    /// <summary>
-    /// Gets the git hash value from the assembly or null if it cannot be found.
-    /// </summary>
-    /// <returns>The git hash of the assembly.</returns>
-    public static string? GetGitHashClientStructs()
-    {
-        if (gitHashClientStructsInternal != null)
-            return gitHashClientStructsInternal;
-
-        var asm = typeof(Util).Assembly;
-        var attrs = asm.GetCustomAttributes<AssemblyMetadataAttribute>();
-
-        gitHashClientStructsInternal = attrs.First(a => a.Key == "GitHashClientStructs").Value;
-
-        return gitHashClientStructsInternal;
-    }
 
     /// <inheritdoc cref="DescribeAddress(nint)"/>
     public static unsafe string DescribeAddress(void* p) => DescribeAddress((nint)p);
@@ -753,7 +690,7 @@ public static partial class Util
             $"{actor.Address.ToInt64():X}:{actor.GameObjectId:X}[{tag}] - {actor.ObjectKind} - {actor.Name} - X{actor.Position.X} Y{actor.Position.Y} Z{actor.Position.Z} D{actor.YalmDistanceX} R{actor.Rotation} - Target: {actor.TargetObjectId:X}\n";
 
         if (actor is Npc npc)
-            actorString += $"       DataId: {npc.DataId}  NameId:{npc.NameId}\n";
+            actorString += $"       BaseId: {npc.BaseId}  NameId:{npc.NameId}\n";
 
         if (actor is ICharacter chara)
         {
@@ -787,7 +724,7 @@ public static partial class Util
             $"{actor.Address.ToInt64():X}:{actor.GameObjectId:X}[{tag}] - {actor.ObjectKind} - {actor.Name} - X{actor.Position.X} Y{actor.Position.Y} Z{actor.Position.Z} D{actor.YalmDistanceX} R{actor.Rotation} - Target: {actor.TargetObjectId:X}\n";
 
         if (actor is Npc npc)
-            actorString += $"       DataId: {npc.DataId}  NameId:{npc.NameId}\n";
+            actorString += $"       BaseId: {npc.BaseId}  NameId:{npc.NameId}\n";
 
         if (actor is Character chara)
         {
@@ -825,7 +762,7 @@ public static partial class Util
         var sizeWithTerminators = pathBytesSize + (pathBytes.Length * 2);
 
         var dropFilesSize = sizeof(DROPFILES);
-        var hGlobal = Win32_PInvoke.GlobalAlloc_SafeHandle(
+        var hGlobal = Win32_PInvoke.GlobalAlloc(
             GLOBAL_ALLOC_FLAGS.GHND,
             // struct size + size of encoded strings + null terminator for each
             // string + two null terminators for end of list
@@ -863,12 +800,11 @@ public static partial class Util
         {
             Win32_PInvoke.SetClipboardData(
                 (uint)CLIPBOARD_FORMAT.CF_HDROP,
-                hGlobal);
+                (Windows.Win32.Foundation.HANDLE)hGlobal.Value);
             Win32_PInvoke.CloseClipboard();
             return true;
         }
 
-        hGlobal.Dispose();
         return false;
     }
 
