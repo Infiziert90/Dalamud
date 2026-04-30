@@ -73,4 +73,36 @@ public static class XivChatTypeExtensions
         XivChatType.PvpTeamLoginLogout => true,
         _ => false
     };
+
+    /// <summary>
+    /// Gets whether the chat type utilizes <see cref="XivChatRelationKind"/>.
+    /// </summary>
+    /// <param name="type">The chat type.</param>
+    /// <returns>True if <see cref="XivChatRelationKind"/> are used.</returns>
+    public static bool TestKind(this XivChatType type) => type switch
+    {
+        // Battle
+        XivChatType.Damage => true,
+        XivChatType.Miss => true,
+        XivChatType.Action => true,
+        XivChatType.Item => true,
+        XivChatType.Healing => true,
+        XivChatType.GainBuff => true,
+        XivChatType.LoseBuff => true,
+        XivChatType.GainDebuff => true,
+        XivChatType.LoseDebuff => true,
+
+        // Announcements
+        XivChatType.SystemMessage => true,
+        XivChatType.SystemError => true,
+        XivChatType.ErrorMessage => true,
+        XivChatType.LootNotice => true,
+        XivChatType.Progress => true,
+        XivChatType.LootRoll => true,
+        XivChatType.Crafting => true,
+        XivChatType.Gathering => true,
+        XivChatType.FreeCompanyLoginLogout => true,
+        XivChatType.PvpTeamLoginLogout => true,
+        _ => false,
+    };
 }
